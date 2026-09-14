@@ -2,7 +2,21 @@
 
 > **Bi-Temporal, 4-Tier Hybrid Cognitive Memory Engine for Autonomous Coding Agents**
 
-CortexMemory replaces the flat, token-bloating context windows of modern AI coding agents with an external cognitive brain. By decoupling short-term working context from long-term memory, it achieves **~82% token cost reduction**, eliminates compaction amnesia, and prevents repetitive debugging loops.
+CortexMemory is an external cognitive memory engine that connects to your preferred AI coding agent via the **Model Context Protocol (MCP)**. By decoupling short-term working context from long-term memory, it keeps active prompts lean and stationary ($O(1)$), cutting token consumption by **~82%**, eliminating compaction amnesia, and preventing repetitive debugging loops.
+
+All memory storage runs **100% locally on your machine using Docker** (PostgreSQL 16 + Neo4j 5.26) and local vector embeddings.
+
+---
+
+## Why CortexMemory?
+
+- **Universal Agent Compatibility:** Seamlessly connects via standard MCP to **Claude Code**, **Cursor**, **Windsurf**, **Antigravity**, and **Claude Desktop**.
+- **Massive Token & Cost Savings (~82%):** Instead of accumulating 160k+ tokens across 40 turns, the agent's prompt stays small and fast (~8k–12k tokens), with Cortex injecting only relevant facts capped under 2,500 tokens.
+- **Privacy-First & Fully Local:** Your code history, tool outputs, diffs, and knowledge graphs reside entirely in local Docker containers.
+- **No Cloud Embedding Fees:** Embeddings run locally via FastEmbed (`BAAI/bge-small-en-v1.5`) by default, with optional support for OpenAI embeddings.
+- **Zero Compaction Amnesia:** Never lose track of early user constraints, test logs, or architectural decisions when the context window compacts.
+- **Repetitive Bug Loop Prevention:** SHA-256 error hashing alerts the agent immediately if it attempts an identical failed fix.
+- **Flexible Sleep-Cycle Consolidation:** The background distillation daemon can use lightweight cloud models (Claude 3.5 Haiku, Gemini Flash) or local models (via Ollama).
 
 ---
 
@@ -21,14 +35,14 @@ CortexMemory organizes memory into **4 distinct tiers** operating across two dec
 
 ### Dual Execution Paths
 1. **Hot Path (Sub-Second):** FastMCP tools log turns immediately to PostgreSQL. Queries perform hybrid search across Vector (Tier 3) and Graph (Tier 4) fused via **Reciprocal Rank Fusion (RRF)** and packed into a lean context (< 2,500 tokens).
-2. **Sleep-Cycle Consolidation (Background):** A PostgreSQL trigger fires `pg_notify('new_episode_channel')`. An asynchronous daemon wakes up without polling, reflects on recent turns with a fast LLM (e.g. Claude 3.5 Haiku / Gemini Flash), and reconciles the knowledge graph using 4 atomic operations (`ADD`, `UPDATE`, `DELETE`, `NOOP`).
+2. **Sleep-Cycle Consolidation (Background):** A PostgreSQL trigger fires `pg_notify('new_episode_channel')`. An asynchronous daemon wakes up without polling, reflects on recent turns with a fast LLM (e.g. Claude 3.5 Haiku, Gemini Flash, or local Ollama), and reconciles the knowledge graph using 4 atomic operations (`ADD`, `UPDATE`, `DELETE`, `NOOP`).
 
 ---
 
 ## Key Use Cases
 
 ### 1. Eliminating Repetitive Debugging Loops
-* **The Problem:** In long sessions, when an agent runs into a compiler error or test failure, previous stack traces roll off the compacted context. The agent repeatedly attempts the same failed fix.
+* **The Problem:** In extended sessions, when an agent encounters compiler errors or test failures, previous stack traces roll off the compacted context. The agent repeatedly attempts the same failed fix.
 * **The Solution:** CortexMemory hashes every error with SHA-256 in PostgreSQL. If the agent encounters the same failure signature twice, Cortex immediately flags `repetitive_loop_detected: true`, halting the loop and forcing a new strategy.
 
 ### 2. Temporal Disambiguation in Major Refactors
