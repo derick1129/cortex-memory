@@ -117,3 +117,9 @@ def create_cortex_mcp_server(config: Optional[CortexConfig] = None) -> FastMCP:
         return {"consolidated_count": count}
 
     return mcp
+
+
+mcp_server = create_cortex_mcp_server()
+
+if __name__ == "__main__":
+    mcp_server.run()
