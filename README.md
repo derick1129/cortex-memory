@@ -8,6 +8,34 @@ All memory storage runs **100% locally on your machine using Docker** (PostgreSQ
 
 ---
 
+## Architecture Overview
+
+![CortexMemory Architecture](intent/cortexmemory_neo4j_postgres_1788856579091.jpg)
+
+CortexMemory organizes memory into **4 distinct tiers** operating across two decoupled asynchronous pathways:
+
+1. **The Hot Path (Sub-Second Execution):**
+   - When the agent runs a tool, it logs the event non-blockingly to **Tier 2 (PostgreSQL)** in < 5ms.
+   - When the agent queries memory, the **Cognitive Memory Router** triggers a multi-modal lookup:
+     - Retrieves active scratchpad notes from **Tier 1 (Working Memory)**.
+     - Executes Lucene cosine similarity search in **Tier 3 (Semantic Vector Store)**.
+     - Executes multi-hop bi-temporal graph traversal in **Tier 4 (Knowledge Graph)**.
+     - Fuses rankings using **Reciprocal Rank Fusion (RRF)**:
+       $$RRF(d) = \sum_{m \in \{\text{vector}, \text{graph}, \text{episodic}\}} \frac{w_m}{k + \text{rank}_m(d)}$$
+     - Packs the top results via the **Token Budgeter** into a clean, deterministic context block (< 2,500 tokens).
+
+2. **The Sleep-Cycle Consolidation Path (Background Daemon):**
+   - An `AFTER INSERT` trigger on PostgreSQL fires `pg_notify('new_episode_channel')`.
+   - The background daemon wakes up reactively (zero polling overhead) and claims unconsolidated batches using `SELECT ... FOR UPDATE SKIP LOCKED` (concurrency-safe).
+   - Distills raw events using a fast reflection model into **4 atomic operations**:
+     - `ADD`: Inserts a new entity or dependency edge (`valid_from = now(), valid_to = null`).
+     - `UPDATE`: Modifies entity properties or bumps relationship confidence.
+     - `DELETE` (Soft Invalidation): Sets `valid_to = now()` on superseded relationships.
+     - `NOOP`: Discards transient noise (e.g. `ls`, `cat` on unchanged files).
+   - Ingests updates into Neo4j and marks episodes as `consolidated = true`.
+
+---
+
 ## Why CortexMemory?
 
 - **Universal Agent Compatibility:** Seamlessly connects via standard MCP to **Claude Code**, **Cursor**, **Windsurf**, **Antigravity**, and **Claude Desktop**.
@@ -100,34 +128,6 @@ Based on an extended 50-turn refactoring session benchmark:
 | **Temporal Disambiguation** | None (confuses old & new code) | Strict (`[valid_from, valid_to]`) | **Zero temporal hallucinations** |
 | **Repetitive Error Handling** | Prone to repeating failed fixes | Instant SHA-256 hash alert | **Loops halted after 1 repeat** |
 | **Multi-Hop Dependency Resolution** | Heuristic regex/grep searching | Exact Cypher graph traversal | **True structural awareness** |
-
----
-
-## Architecture Overview
-
-![CortexMemory Architecture](intent/cortexmemory_neo4j_postgres_1788856579091.jpg)
-
-CortexMemory operates across two decoupled asynchronous pathways:
-
-1. **The Hot Path (Sub-Second Execution):**
-   - When the agent runs a tool, it logs the event non-blockingly to **Tier 2 (PostgreSQL)** in < 5ms.
-   - When the agent queries memory, the **Cognitive Memory Router** triggers a multi-modal lookup:
-     - Retrieves active scratchpad notes from **Tier 1**.
-     - Executes Lucene cosine similarity search in **Tier 3**.
-     - Executes multi-hop bi-temporal graph traversal in **Tier 4**.
-     - Fuses rankings using **Reciprocal Rank Fusion (RRF)**:
-       $$RRF(d) = \sum_{m \in \{\text{vector}, \text{graph}, \text{episodic}\}} \frac{w_m}{k + \text{rank}_m(d)}$$
-     - Packs the top results via the **Token Budgeter** into a clean, deterministic context block (< 2,500 tokens).
-
-2. **The Sleep-Cycle Consolidation Path (Background Daemon):**
-   - An `AFTER INSERT` trigger on PostgreSQL fires `pg_notify('new_episode_channel')`.
-   - The background daemon wakes up reactively (zero polling overhead) and claims unconsolidated batches using `SELECT ... FOR UPDATE SKIP LOCKED` (concurrency-safe).
-   - Distills raw events using a fast reflection model into **4 atomic operations**:
-     - `ADD`: Inserts a new entity or dependency edge (`valid_from = now(), valid_to = null`).
-     - `UPDATE`: Modifies entity properties or bumps relationship confidence.
-     - `DELETE` (Soft Invalidation): Sets `valid_to = now()` on superseded relationships.
-     - `NOOP`: Discards transient noise (e.g. `ls`, `cat` on unchanged files).
-   - Ingests updates into Neo4j and marks episodes as `consolidated = true`.
 
 ---
 
