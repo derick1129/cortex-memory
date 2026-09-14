@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  cortex-postgres:
+    image: postgres:16-alpine
+    container_name: cortex-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: cortex
+      POSTGRES_PASSWORD: cortex_secure_password
+      POSTGRES_DB: cortex_memory
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
+
+  cortex-neo4j:
+    image: neo4j:5.26-community
+    container_name: cortex-neo4j
+    restart: always
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/cortex_secure_password
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_db_tx__log_rotation_retention__policy: "3 days"
+    volumes:
+      - neo4j_data:/data
+
+volumes:
+  postgres_data:
+  neo4j_data:
